@@ -59,12 +59,9 @@ def get_password_hash(password):
 
 def get_user(username: str):
     user = db.users.find_one({'username': username})
-    user.pop('_id')
-
     if user is not None:
+        user.pop('_id')
         return UserInDB(**user)
-    else:
-        return HTTPException(404, 'User is not exist')
 
 
 def authenticate_user(username: str, password: str):
@@ -133,17 +130,16 @@ async def login_for_access_token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@app.post("/user", response_model=UserIn)
+@app.post("/user")
 async def create_user(user: UserIn):
     try:
         users = db.users
         check_user = users.find_one({'username': user.username})
         if check_user is None:
+            dict_in = user.dict()
+            dict_in.update({'hashed_password': get_password_hash(user.password)})
 
-            user_id = users.insert_one(
-                UserInDB(**user.dict(),
-                         hashed_password=get_password_hash(user.password))
-            ).inserted_id
+            user_id = users.insert_one(UserInDB(**dict_in).dict()).inserted_id
             if user_id:
                 return {'user_id': str(user_id)}
             else:
@@ -155,9 +151,10 @@ async def create_user(user: UserIn):
 
 
 @app.get("/user", response_model=UserOut)
-async def get_user(current_user: UserBase = Depends(get_current_active_user)):
+async def get_user_data(current_user: UserBase = Depends(get_current_active_user)):
     try:
         username = current_user.username
+        print('jepa')
         user = db.users.find_one({'username': username})
         user.pop('_id')
         if user is not None:
@@ -166,3 +163,4 @@ async def get_user(current_user: UserBase = Depends(get_current_active_user)):
             return HTTPException(404, 'User is not exist')
     except Exception as ex:
         return HTTPException(404, ex)
+    
