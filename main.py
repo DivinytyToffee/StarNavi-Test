@@ -1,118 +1,17 @@
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import timedelta, datetime
+from typing import List
 
-from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError, jwt
-from passlib.context import CryptContext
-from pydantic import BaseModel
-from pymongo import MongoClient
+from bson import ObjectId
+from fastapi import FastAPI, Depends, HTTPException, status, Response
+from fastapi.security import OAuth2PasswordRequestForm
+
+from helpers import get_password_hash, authenticate_user, create_access_token, \
+    get_current_active_user, check_like
+from models import UserBase, UserIn, UserOut, UserInDB, Token, Post, PostInDB, \
+    PostOut, Like
+from settings import db, ACCESS_TOKEN_EXPIRE_MINUTES
 
 app = FastAPI()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-client = MongoClient()
-db = client.test_database
-
-SECRET_KEY = "aa5dfa23a654b55c04e55980ac2af78fce91148aad6e7c6615580f8e311acb4a"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
-
-class UserBase(BaseModel):
-    username: str
-    age: Optional[int] = None
-    email: Optional[str] = None
-    disabled: Optional[bool] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-
-
-class UserIn(UserBase):
-    password: str
-
-
-class UserOut(UserBase):
-    pass
-
-
-class UserInDB(UserBase):
-    hashed_password: str
-
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-
-class TokenData(BaseModel):
-    username: Optional[str] = None
-
-
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-
-def get_user(username: str):
-    user = db.users.find_one({'username': username})
-    user.pop('_id')
-
-    if user is not None:
-        return UserInDB(**user)
-    else:
-        return HTTPException(404, 'User is not exist')
-
-
-def authenticate_user(username: str, password: str):
-    user = get_user(username)
-    if not user:
-        return False
-    if not verify_password(password, user.hashed_password):
-        return False
-    return user
-
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-        token_data = TokenData(username=username)
-    except JWTError:
-        raise credentials_exception
-    user = get_user(username=token_data.username)
-    if user is None:
-        raise credentials_exception
-    return user
-
-
-async def get_current_active_user(
-        current_user: UserBase = Depends(get_current_user)
-):
-    if current_user.disabled:
-        raise HTTPException(status_code=400, detail="Inactive user")
-    return current_user
 
 
 @app.post("/token", response_model=Token)
@@ -133,17 +32,16 @@ async def login_for_access_token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@app.post("/user", response_model=UserIn)
+@app.post("/user")
 async def create_user(user: UserIn):
     try:
         users = db.users
         check_user = users.find_one({'username': user.username})
         if check_user is None:
+            dict_in = user.dict()
+            dict_in.update({'hashed_password': get_password_hash(user.password)})
 
-            user_id = users.insert_one(
-                UserInDB(**user.dict(),
-                         hashed_password=get_password_hash(user.password))
-            ).inserted_id
+            user_id = users.insert_one(UserInDB(**dict_in).dict()).inserted_id
             if user_id:
                 return {'user_id': str(user_id)}
             else:
@@ -155,14 +53,88 @@ async def create_user(user: UserIn):
 
 
 @app.get("/user", response_model=UserOut)
-async def get_user(current_user: UserBase = Depends(get_current_active_user)):
+async def get_user_data(
+        current_user: UserBase = Depends(get_current_active_user)
+):
     try:
         username = current_user.username
         user = db.users.find_one({'username': username})
-        user.pop('_id')
         if user is not None:
             return user
         else:
             return HTTPException(404, 'User is not exist')
+    except Exception as ex:
+        return HTTPException(404, ex)
+
+
+@app.post("/post")
+async def create_posts(
+        post: Post,
+        current_user: UserBase = Depends(get_current_active_user)
+):
+    try:
+        post_db = PostInDB(
+            **post.dict(),
+            creator=current_user.username,
+            create_date=datetime.now()
+        )
+        post_id = db.posts.insert_one(post_db.dict()).inserted_id
+
+        if post_id:
+            return {'user_id': str(post_id)}
+        else:
+            return HTTPException(423, 'Can\'t create post')
+
+    except Exception as ex:
+        return HTTPException(404, ex)
+
+
+@app.get("/post", response_model=List[PostOut])
+async def get_post_list(count: int = 10, page: int = 1):
+    list_out = db.posts.find().skip(count*(page-1)).limit(count)
+    return [PostOut(**x, id=str(x.get('_id'))) for x in list_out]
+
+
+@app.get("/post/{post_id}", response_model=PostOut)
+async def get_post(post_id: str):
+    try:
+        post = db.posts.find_one({'_id': ObjectId(post_id)})
+        if post is not None:
+            return PostOut(**post, id=str(post.get('_id')))
+        else:
+            return HTTPException(404, 'Post is not exist')
+
+    except Exception as ex:
+        return HTTPException(404, ex)
+
+
+@app.put('/post/like/{post_id}')
+async def like_post(
+        post_id: str,
+        current_user: UserBase = Depends(get_current_active_user)
+):
+    try:
+        post = db.posts.find_one({'_id': ObjectId(post_id)})
+        if post is not None:
+            likes = post.get('likes') if post.get('likes') else []
+
+            if check_like(current_user.username, likes):
+                return HTTPException(404, 'post already likes')
+
+            likes.append(
+                Like(username=current_user.username, date=datetime.now()).dict()
+            )
+            result = db.posts.update_one(
+                {'_id': ObjectId(post_id)},
+                {'$set': {'likes': likes}}
+            )
+
+            if result:
+                return Response('', 204)
+            else:
+                return HTTPException(422, 'can\'t insert')
+        else:
+            return HTTPException(404, 'Post is not exist')
+
     except Exception as ex:
         return HTTPException(404, ex)
