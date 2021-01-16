@@ -1,5 +1,5 @@
 from datetime import timedelta, datetime
-from typing import List
+from typing import List, Optional
 
 from bson import ObjectId
 from fastapi import FastAPI, Depends, HTTPException, status, Response
@@ -14,7 +14,7 @@ from settings import db, ACCESS_TOKEN_EXPIRE_MINUTES
 app = FastAPI()
 
 
-@app.post("/token", response_model=Token)
+@app.post("/api/token", response_model=Token)
 async def login_for_access_token(
         form_data: OAuth2PasswordRequestForm = Depends()
 ):
@@ -32,7 +32,7 @@ async def login_for_access_token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@app.post("/user")
+@app.post("/api/user")
 async def create_user(user: UserIn):
     try:
         users = db.users
@@ -49,10 +49,10 @@ async def create_user(user: UserIn):
         else:
             return HTTPException(404, 'User already exist')
     except Exception as ex:
-        return HTTPException(404, ex)
+        return HTTPException(404, str(ex))
 
 
-@app.get("/user", response_model=UserOut)
+@app.get("/api/user", response_model=UserOut)
 async def get_user_data(
         current_user: UserBase = Depends(get_current_active_user)
 ):
@@ -67,7 +67,7 @@ async def get_user_data(
         return HTTPException(404, ex)
 
 
-@app.post("/post")
+@app.post("/api/post")
 async def create_posts(
         post: Post,
         current_user: UserBase = Depends(get_current_active_user)
@@ -89,13 +89,17 @@ async def create_posts(
         return HTTPException(404, ex)
 
 
-@app.get("/post", response_model=List[PostOut])
-async def get_post_list(count: int = 10, page: int = 1):
-    list_out = db.posts.find().skip(count*(page-1)).limit(count)
+@app.get("/api/post", response_model=List[PostOut])
+async def get_post_list(count: int = 10, page: int = 1, username: Optional[str] = None):
+    sort = None
+    if username:
+        sort = {'creator': username}
+
+    list_out = db.posts.find(sort).skip(count*(page-1)).limit(count)
     return [PostOut(**x, id=str(x.get('_id'))) for x in list_out]
 
 
-@app.get("/post/{post_id}", response_model=PostOut)
+@app.get("/api/post/{post_id}", response_model=PostOut)
 async def get_post(post_id: str):
     try:
         post = db.posts.find_one({'_id': ObjectId(post_id)})
@@ -108,7 +112,7 @@ async def get_post(post_id: str):
         return HTTPException(404, ex)
 
 
-@app.put('/post/like/{post_id}')
+@app.put('/api/post/like/{post_id}')
 async def like_post(
         post_id: str,
         current_user: UserBase = Depends(get_current_active_user)
@@ -138,3 +142,34 @@ async def like_post(
 
     except Exception as ex:
         return HTTPException(404, ex)
+
+
+@app.put('/api/post/unlike/{post_id}')
+async def unlike_post(
+        post_id: str,
+        current_user: UserBase = Depends(get_current_active_user)
+):
+    try:
+        post = db.posts.find_one({'_id': ObjectId(post_id)})
+        if post is not None:
+            result = db.posts.update_one(
+                {'_id': ObjectId(post_id)},
+                {"$pull": {'likes': {"username": current_user.username}}},
+                False,
+                True
+            )
+
+            if result:
+                return Response('', 204)
+            else:
+                return HTTPException(422, 'can\'t insert')
+        else:
+            return HTTPException(404, 'Post is not exist')
+
+    except Exception as ex:
+        return HTTPException(404, ex)
+
+
+@app.get('/api/analitics')
+async def get_likes_count(date_from: datetime, date_to: datetime):
+    pass
