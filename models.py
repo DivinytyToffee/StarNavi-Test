@@ -11,6 +11,7 @@ class UserBase(BaseModel):
     disabled: Optional[bool] = False
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    admin: Optional[bool] = False
 
 
 class UserIn(UserBase):
@@ -47,7 +48,7 @@ class Post(BaseModel):
 class PostInDB(Post):
     creator: str
     create_date: datetime
-    likes: Optional[List[Like]] = None
+    likes: Optional[List[Like]] = []
 
 
 class PostOut(PostInDB):
