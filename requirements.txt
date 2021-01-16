@@ -1,3 +1,4 @@
+bcrypt
 click==7.1.2
 ecdsa==0.14.1
 fastapi==0.63.0

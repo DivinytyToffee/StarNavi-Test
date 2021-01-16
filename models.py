@@ -8,7 +8,7 @@ class UserBase(BaseModel):
     username: str
     age: Optional[int] = None
     email: Optional[str] = None
-    disabled: Optional[bool] = None
+    disabled: Optional[bool] = False
     first_name: Optional[str] = None
     last_name: Optional[str] = None
 
