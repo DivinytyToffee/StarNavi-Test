@@ -1,0 +1,13 @@
+{
+  "users": {
+    "user_count": 5,
+    "users_list": [
+      {"username": "test-1", "password": "secret-1"},
+      {"username": "test-2", "password": "secret-2"}
+    ]
+  },
+  "posts": {
+    "min_posts_count": 2,
+    "max_posts_count": 10
+  }
+}
