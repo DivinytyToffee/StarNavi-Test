@@ -3,6 +3,7 @@ import random
 import string
 import sys
 
+from datetime import datetime, timedelta
 
 import requests
 
@@ -287,7 +288,7 @@ def make_likes(max_likes, min_likes):
 
     for user in BASE.get('users'):
         likes_count = random.randint(min_likes, max_likes)
-        print(likes_count)
+        print(f'{likes_count} likes from {user.get("username")}')
         posts = [random.choice(BASE.get('posts')) for x in range(likes_count)]
         for post_id in posts:
             resp = like_post(user, post_id)
@@ -323,9 +324,9 @@ def main(*argv):
 
         if len(list_elements) > 2:
             if list_elements[2] == '--deleted':
-                print('OK')
                 delete_random_users()
                 delete_random_posts()
+                print('Deleted random data')
 
     except StopFunction:
         print('Bot stop')

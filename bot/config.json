@@ -1,15 +1,13 @@
 {
   "users": {
-    "random_user_count": 15,
+    "random_user_count": 5,
     "users_list": [
       {"username": "divtof", "password": "26042006"},
       {"username": "admin", "password": "admin"}
     ]
   },
   "posts": {
-    "min_posts_per_user": 1,
     "max_posts_per_user": 5,
-    "min_likes_per_user": 2,
     "max_likes_per_user": 10
   }
 }
