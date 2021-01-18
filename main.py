@@ -88,7 +88,7 @@ async def create_posts(
     post_id = db.posts.insert_one(post_db.dict()).inserted_id
 
     if post_id:
-        return {'user_id': str(post_id)}
+        return {'post_id': str(post_id)}
     else:
         return HTTPException(423, 'Can\'t create post')
 
