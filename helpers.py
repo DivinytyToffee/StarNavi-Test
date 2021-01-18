@@ -131,7 +131,7 @@ async def get_current_admin_user(
     :return:
     """
     if get_current_active_user(current_user):
-
+        log_activity_user(current_user.username)
         if current_user.admin:
             return current_user
 

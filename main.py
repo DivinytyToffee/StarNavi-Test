@@ -67,6 +67,13 @@ async def get_user_data(
         return HTTPException(404, 'User is not exist')
 
 
+@app.get("/api/users", response_model=List[UserOut])
+@security_decorator
+async def get_user_list(count: int = 10, page: int = 1):
+    list_out = db.users.find().skip(count*(page-1)).limit(count)
+    return [UserOut(**x) for x in list_out]
+
+
 @app.post("/api/post")
 @security_decorator
 async def create_posts(
@@ -176,7 +183,13 @@ async def get_user_activity(
         current_user: UserBase = Depends(get_current_admin_user)
 ):
     result = db.statistic.find_one({'username': username})
-    result.pop('_id')
+    if result:
+        result.pop('_id')
     return result
 
 
+@app.get("/api/analytics/users")
+@security_decorator
+async def get_user_list(admin_user: UserBase = Depends(get_current_admin_user)):
+    result = db.users.count_documents({})
+    return {'count-user': result}
